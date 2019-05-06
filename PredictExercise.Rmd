@@ -1,0 +1,141 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Kehinde Usman"
+date: "May 6, 2019"
+output: html_document
+---
+
+## Introduction 
+
+###### Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+## Aim
+###### The goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants that were asked to perform barbell lifts correctly and incorrectly in 5 different ways to predict the manner in which they did the exercise.
+
+#### Load libraries
+```{r}
+library(caret)
+library(randomForest)
+library(e1071)
+```
+
+#### Load and Clean Data
+```{r}
+set.seed(12345)
+training <- read.csv('pml-training.csv', na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv('pml-testing.csv', na.strings=c("NA","#DIV/0!",""))
+```
+
+#### Cross validation set
+###### The training set is divided in two parts, one for training and the other for cross validation
+```{r}
+inTrain <- createDataPartition(training$classe, p=0.7, list=FALSE)
+myTraining <- training[inTrain, ]
+myTesting <- training[-inTrain, ]
+dim(myTraining); dim(myTesting)
+```
+
+##### Cleaning the data
+
+###### Remove NearZeroVariance variables
+
+```{r}
+nzv <- nearZeroVar(myTraining, saveMetrics=TRUE)
+myTraining <- myTraining[,nzv$nzv==FALSE]
+nzv<- nearZeroVar(myTesting,saveMetrics=TRUE)
+myTesting <- myTesting[,nzv$nzv==FALSE]
+```
+
+Remove the first column of the myTraining data set
+
+```{r}
+myTraining <- myTraining[c(-1)]
+```
+
+###### Clean variables with more than 70% NA
+
+```{r}
+trainingV3 <- myTraining
+for(i in 1:length(myTraining)) {
+    if( sum( is.na( myTraining[, i] ) ) /nrow(myTraining) >= .7) {
+        for(j in 1:length(trainingV3)) {
+            if( length( grep(names(myTraining[i]), names(trainingV3)[j]) ) == 1)  {
+                trainingV3 <- trainingV3[ , -j]
+            }   
+        } 
+    }
+}
+# Set back to the original variable name
+myTraining <- trainingV3
+rm(trainingV3)
+```
+
+###### Transform the myTesting and testing data sets
+
+```{r}
+clean1 <- colnames(myTraining)
+clean2 <- colnames(myTraining[, -58])  # remove the classe column
+myTesting <- myTesting[clean1]         # allow only variables in myTesting that are also in myTraining
+testing <- testing[clean2]             # allow only variables in testing that are also in myTraining
+dim(myTesting)
+```
+
+```{r}
+dim(testing)
+```
+
+###### Merge the data into the same type
+
+```{r}
+for (i in 1:length(testing) ) {
+    for(j in 1:length(myTraining)) {
+        if( length( grep(names(myTraining[i]), names(testing)[j]) ) == 1)  {
+            class(testing[j]) <- class(myTraining[i])
+        }      
+    }      
+}
+# To get the same class between testing and myTraining
+testing <- rbind(myTraining[2, -58] , testing)
+testing <- testing[-1,]
+```
+
+
+#### Train Model
+###### Fit a model using random forest with a cross validation of 5 folds to avoid overfitting.
+
+```{r}
+set.seed(12345)
+modFit <- randomForest(classe ~ ., data=myTraining)
+modFit
+```
+
+###### The figure shows the plot of modFit
+```{r}
+plot(modFit)
+```
+#### Cross Validation Testing
+###### Predict on cross validation dataset by applying our training model to check for accuracy.
+```{r}
+predRF <- predict(modFit, myTesting, type = "class")
+crossPred <- confusionMatrix(predRF, myTesting$classe)
+crossPred
+```
+#### Accuracy and Estimated Out of Sample Error
+```{r}
+accur <- postResample(myTesting$classe, predRF)
+modAccuracy <- accur[[1]]
+modAccuracy
+
+out_of_sample_error <- 1 - modAccuracy
+out_of_sample_error
+
+``` 
+
+###### The estimated accuracy of the model is 99.9% and the estimated out-of-sample error based on our fitted model applied to the cross validation dataset is 0.1%.
+
+#### Predicting Results on the Test Data
+
+```{r}
+predTest <- predict(modFit, testing)
+predTest
+```
